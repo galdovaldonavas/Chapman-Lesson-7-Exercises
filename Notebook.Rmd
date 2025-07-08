@@ -21,6 +21,7 @@ library(dplyr)
 library(supernova)
 
 
+
 ```
 
 
@@ -267,9 +268,117 @@ gf_point(exp(log.sp.food)~ exp(log.nights) , data= hotel.df) %>%gf_smooth()
 
 gf_point(avgFoodSpendPerNight~nightsStayed , data= hotel.df) %>%gf_smooth()
 
-gf_point(jitter(exp(log.sp.food))~ jitter(exp(log.nights)) , data= hotel.df) %>%gf_smooth()
+gf_point(jitter(exp(log.sp.food))~ jitter(exp(log.nights)) , data= hotel.df) %>%gf_smooth( )
 
 #prediction for someone who expend 40 nights
 exp(2.64987+(.20152*log(40)))
+
+#Spearman correlation to see if results go in line with the log model or the real unit model
+
+
+with(hotel.df, cor(cbind(avgFoodSpendPerNight,nightsStayed), method="spearman"))
+with(hotel.df, cor(cbind(log.sp.food,log.nights)))
 ```
+
+
+
+
+
+
+Seeing if the difference is the difference between nights spent and spending on food is different for platinum members
+
+```{r}
+hotel.df$elite.p <- ifelse(hotel.df$eliteStatus=="Platinum", 1,0)
+
+par(mfrow =c(2,2))
+m10<- lm(log.sp.food~ log.nights + elite.p + elite.p:log.nights , data= hotel.df)
+summary(m10)
+plot(m10)
+supernova(m10)
+
+coefplot(m10, intercept =FALSE, outerCI=1.96, LwdOUTER =1.5,
+         ylab="Factors",
+         xlab="Association with Money Spent in Food by Clients")
+```
+
+
+The manual used a different approach to answer this question, by looking at the model in the platinum subset, and comparing the relation with the elite status
+
+```{r}
+par(mfrow =c(2,2))
+
+plat.df <- subset(hotel.df, eliteStatus =="Platinum")
+
+m11<- lm(log.sp.food~ log.nights , data= plat.df)
+summary(m11)
+plot(m11)
+supernova(m11)
+
+#To see the scatterplot segregated by Platinum members versus non Platinum members
+gf_point(jitter(exp(log.sp.food))~ jitter(exp(log.nights)) , col= "red", data= subset(hotel.df, eliteStatus=="Platinum")) %>% gf_point(jitter(exp(log.sp.food))~ jitter(exp(log.nights)) , col= "blue", data= subset(hotel.df, eliteStatus !="Platinum"))
+
+
+
+#To compare the two models grafically, the one for the whole population versus the model for the platinum population
+
+hotel.df$predictedm9<- fitted(m9)
+plat.df$predictedm11<- fitted(m11)
+
+
+gf_point(hotel.df$log.sp.food~ fitted(m9) , col= "red", ylab="money spent($)", xlab="Predicted scores") %>%gf_point(log.sp.food~ predictedm11 , data=plat.df, col= "blue") 
+
+```
+gf_point(hotel.df$log.sp.food~ fitted(m9) , col= "red", ylab="money spent($)", xlab="Predicted scores in all")
+
+
+%>% gf_point(jitter(exp(log.sp.food))~ jitter(exp(log.nights)) , col= "blue", data= subset(hotel.df, eliteStatus !="Platinum"))
+
+
+
+
+13. Similar to exercise 6,we want to know which factor is more important to predict satisfaction with the elite recognition program within the Gold and Platinum members, considering the following factors: front staff, croom cleanliness, the points that we award, and the membership perks given. However, now we are going to use Bayesian regression. 
+
+To remember the prior approach: 
+```{r}
+#To remember the prior approach: 
+par(mfrow =c(2,2))
+m3<- lm(satRecognition~ satCleanRoom+ satFrontStaff + satPerks +satPoints , data= subset(hotel.df, eliteStatus %in% c("Gold", "Platinum")))
+summary(m3)
+plot(m3)
+supernova(m3)
+coefplot(m3, intercept =FALSE, outerCI=1.96, LwdOUTER =1.5,
+         ylab="Factors",
+         xlab="Association with Satisfaction in the Elite Program")
+
+
+```
+
+
+And the Bayesian regression: 
+
+```{r}
+#The new approach with Bayes: 
+par(mfrow =c(2,2))
+m3.b<- MCMCregress(satRecognition~ satCleanRoom+ satFrontStaff + satPerks +satPoints , data= subset(hotel.df, eliteStatus %in% c("Gold", "Platinum")))
+
+summary(m3.b)
+
+
+
+```
+
+14. Comparamos los coeficientes de regresión de los dos modelos
+
+```{r}
+hotel.rec.compare <- data.frame(classical = coef(m3)[-1], 
+                                bayesian  = summary(m3.b)$statistics[c(-1, -6), 1])
+hotel.rec.compare
+plot(bayesian ~ classical, data=hotel.rec.compare)
+abline(0,1)
+cor(hotel.rec.compare$classical, hotel.rec.compare$bayesian)
+```
+
+
+
+
 
