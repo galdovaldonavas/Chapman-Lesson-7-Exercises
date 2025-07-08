@@ -1,21 +1,275 @@
 ---
-title: "R Notebook"
+title: "Exercises Lesson 8"
 output: html_notebook
 ---
 
-This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+This is a practice with Notebooks in R, in which I try to resolve the exercises in Lesson 7 from the Chapman manual. 
 
-Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
-library(psych)
+I start by loading the needed libraries: 
 
 ```{r}
-plot(cars)
+library(car) # to explore pair scatterplot matrices, data explorations,  box-cox transformations
+library(corrplot)# for correlation graphs
+library(gplots)# for including colors in correlation graphs
+library(lattice)# for segment visualizations
+library(binom)# for confidence intervals in binomial tests
+library(multcomp) # for plotting the means and ci of multigroup comparisons
+library(coefplot)# to graph confidence intervals of regression coefficients
+library(MCMCpack)# regression with Bayes
+library(ggformula) # also for plots
+library(dplyr)
+library(supernova)
+
+
 ```
 
-Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
 
-When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+I load the dataset
 
-The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+```{r}
+hotel.df<- read.csv("https://goo.gl/oaWKgt")
+```
 
+
+1. We explore the data 
+
+```{r}
+summary(hotel.df)
+describe(hotel.df)
+str(hotel.df)
+# for cleanliness
+
+
+```
+
+
+(1) We also explore the shape of the distributions and the interrelations between variables
+
+```{r}
+#for cleanliness 
+scatterplotMatrix(hotel.df[,c(1:3,18)])
+ # for staff and perks
+scatterplotMatrix(hotel.df[,c(4:8,18)])
+# for price
+scatterplotMatrix(hotel.df[,c(9:12, 18)])
+#for environment
+scatterplotMatrix(hotel.df[,c(13:15, 18)])
+#for the digital benefits
+scatterplotMatrix(hotel.df[,c(16:17, 18)])
+#for the stay factors
+scatterplotMatrix(hotel.df[,c(19,20,22:24, 18)])
+```
+
+Most variables are normally distributed. However, we can see that distance traveled, number of nights stayed and  average food spending are rightly skewed. We apply log transformations: :
+
+
+
+```{r}
+hotel.df$log.dist <- log(hotel.df$distanceTraveled)
+hotel.df$log.nights <- log(hotel.df$nightsStayed)
+hotel.df$log.sp.food <- log(1+ hotel.df$avgFoodSpendPerNight)
+
+hist(hotel.df$log.dist)
+hist(hotel.df$distanceTraveled)
+
+hist(hotel.df$log.nights)
+hist(hotel.df$nightsStayed)
+
+hist(hotel.df$log.sp.food)
+hist(hotel.df$avgFoodSpendPerNight)
+
+describe(hotel.df)
+#for the stay factors
+scatterplotMatrix(hotel.df[,c(26:28, 18)])
+```
+
+
+The log transformations do not appear to work well for number of nights and food, so we use box-cox tranformations: 
+
+Since the results of these transformations did not improve the transformations from the log transformations, I will put the code below, but out of the coding area:
+
+(
+
+l.dist<- coef(powerTransform(hotel.df$distanceTraveled))
+l.dist
+l.nights<- coef(powerTransform(hotel.df$nightsStayed))
+l.nights
+l.food.sp<- coef(powerTransform(hotel.df$avgFoodSpendPerNight+1))
+l.food.sp
+
+hotel.df$cox.dist <- bcPower(hotel.df$distanceTraveled, l.dist)
+hotel.df$cox.nights <- bcPower(hotel.df$nightsStayed,l.nights)
+hotel.df$cox.sp.food <- bcPower(1+ hotel.df$avgFoodSpendPerNight, l.food.sp)
+
+hist(hotel.df$cox.dist)
+hist(hotel.df$cox.nights)
+hist(hotel.df$cox.sp.food)
+scatterplotMatrix(hotel.df[,c(29:31, 18)])
+
+)
+```{r message=TRUE, warning=TRUE, paged.print=TRUE}
+# In case the box-cox transformations are desired, just copy the code below
+
+```
+
+
+
+2. Exploring further the pattern correlations in the data
+
+
+```{r}
+corrplot.mixed(cor (hotel.df[, c(-21,-25)], use="complete.obs"), upper="ellipse")
+
+corrplot.mixed(cor (hotel.df[, c(1:18,22)], use="complete.obs"),  upper="ellipse")
+
+corrplot.mixed(cor (hotel.df[, c(18:20,22:24,26:28)], use="complete.obs"),  upper="ellipse")
+
+cor(hotel.df[, c(1:18,22)])
+```
+
+In this exploration we can see that the satisfaction variables tend to be moderately correlated with each other. The strongest correlations are between the satisfaction with the front staff and other types of satisfaction, including the overall satisfaction (r=.50). Surprisingly, there is a negative correlation between satisfaction with parking price and satisfaction with valet. 
+
+In regards to the remaining contextual variables, average price per night is moderately and negatively correlated with the satisfaction with some prices like dinning and parking (r = .28-.30), and have also negative but more weak correlations with other satisfaction scores, including overall satisfaction (r = -.15). 
+
+
+
+
+
+
+3. Correlation coefficients between the items referred to satsisfaction with cleanliness. 
+
+```{r}
+#Pearson correlations
+cor(hotel.df[, c("satCleanRoom", "satCleanBath", "satCleanCommon")])
+#Spearman Correlations
+cor(hotel.df[, c("satCleanRoom", "satCleanBath", "satCleanCommon")], method="spearman")
+#Polychoric correlations
+polychoric(hotel.df[, c("satCleanRoom", "satCleanBath", "satCleanCommon")])
+with(hotel.df, polychoric(cbind(satCleanRoom, satCleanBath, satCleanCommon))) #another form
+
+```
+ 
+
+
+
+
+4. Evaluating if satisfaction with elite membership perks predicts overall satisfaction:
+
+```{r}
+m1<- lm(satOverall~satPerks, data=hotel.df)
+summary(m1)
+plot(m1)
+supernova(m1)
+gf_point(jitter(satOverall)~jitter(satPerks), data=hotel.df)%>% gf_smooth(satOverall~satPerks)
+
+```
+
+
+
+
+
+5. We continue evaluating if satisfaction with elite membership perks predicts overall satisfaction, but controlling for the effect of satisfaction with the Front Staff and the city location
+
+```{r}
+m2<- lm(satOverall~satPerks + satFrontStaff + satCity, data=hotel.df)
+summary(m2)
+plot(m2)
+supernova(m2)
+```
+
+
+
+
+
+6. We want to know which factor is more important to predict satisfaction with the elite recognition program within the Gold and Platinum members, considering the following factors: front staff, croom cleanliness, the points that we award, and the membership perks given. 
+
+```{r}
+par(mfrow =c(2,2))
+m3<- lm(satRecognition~ satCleanRoom+ satFrontStaff + satPerks +satPoints , data= subset(hotel.df, eliteStatus %in% c("Gold", "Platinum")))
+summary(m3)
+plot(m3)
+supernova(m3)
+coefplot(m3, intercept =FALSE, outerCI=1.96, LwdOUTER =1.5,
+         ylab="Factors",
+         xlab="Association with Satisfaction in the Elite Program")
+```
+
+
+7. It is important to consider that this is not an exact measurement of the contribution of each factor to the satisfaction. To get more valid measures we will actually have to measure real changes in those factors that would be derived from the money increase. The measures we have are based on how prior variations in satisfaction with each factor are related to satisfaction, but we are not sure if those variations are in line with the ones tha we will create with the investments. Yet, it can work as an approximation. 
+
+8. Considering these results, it looks like cleanliness is not a major factor to increase the satisfaction with the membership program. 
+
+
+9. Now, if I understand correct, we want to understand the relationship of the money spent in food with elite status and satisfaction with food price
+
+
+```{r}
+hotel.df$eliteStatus<-factor(hotel.df$eliteStatus)
+par(mfrow =c(2,2))
+m4<- lm(log.sp.food~ eliteStatus + satDiningPrice , data= hotel.df)
+summary(m4)
+plot(m4)
+supernova(m4)
+coefplot(m4, intercept =FALSE, outerCI=1.96, LwdOUTER =1.5,
+         ylab="Factors",
+         xlab="Association with Money Spent in Food by Clients")
+```
+Just for comparison, I want to see the fit of the model if we did not use the logarithmic transformation for price of the food
+
+```{r}
+
+par(mfrow =c(2,2))
+m5<- lm(avgFoodSpendPerNight~ eliteStatus + satDiningPrice , data= hotel.df)
+summary(m5)
+plot(m5)
+supernova(m5)
+coefplot(m5, intercept =FALSE, outerCI=1.96, LwdOUTER =1.5,
+         ylab="Factors",
+         xlab="Association with Money Spent in Food by Clients")
+```
+
+Now I want to make sure there are not important interactions between the elite status and satisfaction with food to predict higher spending in food
+
+```{r}
+
+par(mfrow =c(2,2))
+m6<- lm(log.sp.food~ eliteStatus + satDiningPrice + eliteStatus:satDiningPrice , data= hotel.df)
+summary(m6)
+plot(m6)
+supernova(m6)
+coefplot(m6, intercept =FALSE, outerCI=1.96, LwdOUTER =1.5,
+         ylab="Factors",
+         xlab="Association with Money Spent in Food by Clients")
+```
+
+
+
+10. I am really confused with these questions, it looks like satDinningPrice represents satisfaction with dinner? or satisfaction with the dinner price???
+
+```{r}
+m7<- lm(log.sp.food ~  satDiningPrice, data= hotel.df)
+summary(m7)
+
+m8<- lm(satDiningPrice ~ log.sp.food , data= hotel.df)
+summary(m8)
+```
+11. Plot how the food spent per night can be predicted by the number of nights: 
+
+```{r}
+par(mfrow =c(2,2))
+m9<- lm(log.sp.food~ log.nights , data= hotel.df)
+summary(m9)
+plot(m9)
+supernova(m9)
+gf_point(log.sp.food~ log.nights , data= hotel.df) %>%gf_smooth(log.sp.food~ log.nights )
+
+gf_point(exp(log.sp.food)~ exp(log.nights) , data= hotel.df) %>%gf_smooth()
+
+gf_point(avgFoodSpendPerNight~nightsStayed , data= hotel.df) %>%gf_smooth()
+
+gf_point(jitter(exp(log.sp.food))~ jitter(exp(log.nights)) , data= hotel.df) %>%gf_smooth()
+
+#prediction for someone who expend 40 nights
+exp(2.64987+(.20152*log(40)))
+```
 
